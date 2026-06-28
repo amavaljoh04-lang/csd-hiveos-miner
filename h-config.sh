@@ -1,7 +1,5 @@
 #!/bin/bash
 # HiveOS config script for CSD Pool Miner
-# Reads wallet.conf and builds runtime configuration
-
-cd "$(dirname "$0")"
-. h-manifest.conf
+MINER_DIR=/hive/miners/custom/csd-pool-miner-v0.1.16
+. $MINER_DIR/h-manifest.conf
 [[ -e /hive-config/wallet.conf ]] && . /hive-config/wallet.conf

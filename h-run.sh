@@ -3,11 +3,11 @@
 # Launches one miner instance per GPU (auto-detects GPU count)
 # Compatible with any NVIDIA GPU (CUDA) or fallback to CPU
 
-cd "$(dirname "$0")"
+MINER_DIR=/hive/miners/custom/csd-pool-miner-v0.1.16
+. $MINER_DIR/h-manifest.conf
 [[ -e /hive-config/wallet.conf ]] && . /hive-config/wallet.conf
-. h-manifest.conf
 
-MINER_BIN="./csd-pool-miner-linux-nvidia"
+MINER_BIN="$MINER_DIR/csd-pool-miner-linux-nvidia"
 
 # Create log directory
 mkdir -p /var/log/miner/csd-pool-miner 2>/dev/null
@@ -82,5 +82,5 @@ done
 echo "[OK] All $GPU_COUNT GPU miners launched"
 echo ""
 
-# Follow the first GPU log to keep HiveOS happy (it expects foreground output)
-tail -f ${CUSTOM_LOG_BASENAME}_gpu0.log 2>/dev/null
+# Stay in foreground - HiveOS expects this process to stay alive
+exec tail -f ${CUSTOM_LOG_BASENAME}_gpu0.log
