@@ -24,28 +24,31 @@
 ## Installation (SSH — one command)
 
 ```bash
-cd /hive/miners/custom && rm -rf csd-pool-miner && mkdir csd-pool-miner && cd csd-pool-miner && wget https://github.com/amavaljoh04-lang/csd-hiveos-miner/releases/download/v0.2.0-optimized/csd-pool-miner-v0.2.0-optimized-hiveos.tar.gz && tar -xzf csd-pool-miner-v0.2.0-optimized-hiveos.tar.gz && rm csd-pool-miner-v0.2.0-optimized-hiveos.tar.gz && chmod +x h-run.sh h-stop.sh h-stats.sh h-config.sh stats-helper.sh csd-pool-miner-linux-nvidia
+cd /hive/miners/custom && rm -rf csd-pool-miner-v0.2.0-optimized && wget https://github.com/amavaljoh04-lang/csd-hiveos-miner/releases/download/v0.2.0-optimized/csd-pool-miner-v0.2.0-optimized-hiveos.tar.gz && tar -xzf csd-pool-miner-v0.2.0-optimized-hiveos.tar.gz && rm csd-pool-miner-v0.2.0-optimized-hiveos.tar.gz && chmod +x csd-pool-miner-v0.2.0-optimized/*.sh csd-pool-miner-v0.2.0-optimized/csd-gpu-miner
 ```
 
 ## Flight Sheet Configuration
 
 | Field | Value |
 |-------|-------|
-| **Miner name** | `csd-pool-miner` |
+| **Miner name** | `csd-pool-miner-v0.2.0-optimized` |
 | **Installation URL** | `https://github.com/amavaljoh04-lang/csd-hiveos-miner/releases/download/v0.2.0-optimized/csd-pool-miner-v0.2.0-optimized-hiveos.tar.gz` |
 | **Hash algorithm** | `sha256d` |
 | **Wallet template** | `%WAL%` |
 | **Pool URL** | `stratum+tcp://pool.yamaduo.no:3333` |
-| **Extra config arguments** | `--power-limit 220 --temp-limit 80 --temp-resume 72` |
+| **Extra config arguments** | *(laisser vide — ne rien mettre)* |
 
 ## Extra Config Options
+
+**Par défaut, ne rien mettre en extra config.** Le miner gère tout automatiquement (auto-tune, thermal management, etc.).
+
+Options avancées (optionnelles, à n'utiliser que si nécessaire) :
 
 | Option | Description | Example |
 |--------|-------------|---------|
 | `--power-limit <W>` | GPU power limit in watts | `--power-limit 200` |
 | `--temp-limit <C>` | Pause mining above this temp | `--temp-limit 85` |
 | `--temp-resume <C>` | Resume mining below this temp | `--temp-resume 75` |
-| `--auto-tune` | Benchmark GPU at start (recommended) | `--auto-tune` |
 | `--no-suggest-diff` | Don't suggest difficulty to pool | `--no-suggest-diff` |
 
 ## How It Works
