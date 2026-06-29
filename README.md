@@ -1,98 +1,92 @@
-# CSD Pool Miner - HiveOS Custom Miner
+# CSD Pool Miner — HiveOS Custom Miner Package (Optimized)
 
-Custom miner package for mining **Compute Substrate (CSD)** on HiveOS.
+**Version:** v0.2.0-optimized  
+**Algorithm:** SHA-256d (Compute Substrate / CSD)  
+**Pool:** pool.yamaduo.no:3333 (built-in)  
+**Compatible:** Any NVIDIA GPU (GTX 1060+, RTX 20xx/30xx/40xx/50xx, CMP, Tesla, A-series)
 
-## Supported Hardware
+## Optimizations (vs v0.1.19 official)
 
-- **NVIDIA GPUs** (CUDA) — any card with recent drivers (GTX 1060+, RTX 2000/3000/4000/5000, CMP, Tesla, etc.)
-- **CPU fallback** — runs on CPU if no GPU detected (SHA-NI hardware acceleration)
-- Auto-detects GPU count and launches one instance per card
+1. **CUDA Kernel Early-Exit** — Checks outer hash first word immediately after SHA-256 compression. Rejects 99.99%+ of nonces before computing the full target comparison. Saves ~7 state-word computations per miss.
 
-## Features
+2. **Optimized maj() computation** — Uses `(a & b) | (c & (a | b))` instead of textbook `(a & b) ^ (a & c) ^ (b & c)`. One fewer XOR per round = 64 fewer ops per hash.
 
-- Multi-GPU: automatically detects and uses all available NVIDIA GPUs
-- Auto-tune: benchmarks CUDA geometry at startup for optimal performance
-- Power management: `--power-limit` to cap wattage (requires root/elevated)
-- Thermal safety: `--temp-limit` / `--temp-resume` to pause on overheat
-- HiveOS stats: full integration (hashrate, temps, fans, accepted/rejected shares)
-- GPU watchdog: auto-recovery on hung GPU
+3. **Expanded Auto-Tune Geometries** — 12 candidate geometries (vs 6 in official) covering:
+   - Small GPUs (10-20 SMs): 256-512 blocks
+   - Mid-range GPUs (28-46 SMs): 560-1024 blocks  
+   - Large GPUs (82+ SMs like CMP 90HX, RTX 4090): 2048-4096 blocks
+   - High-occupancy variants: 512 TPB, 128 TPB options
 
-## Installation on HiveOS
+4. **Reduced Global Memory Traffic** — Found-flag polling interval doubled from 256 to 512 nonces, cutting uncoalesced global reads by 50% in the inner mining loop.
 
-### Flight Sheet Setup
+5. **NVML Telemetry Enabled** — Real-time temperature, fan speed, power draw monitoring via NVIDIA Management Library.
 
-1. Go to **Flight Sheets** → **Add New Flight Sheet**
-2. **Coin**: leave empty or type `CSD`
-3. **Wallet**: your CSD addr20 address (0x-prefixed, 42 hex chars)
-4. **Pool**: select `Configure in miner`
-5. **Miner**: select **Custom** → click **Setup Miner Config**
+## Installation (SSH — one command)
 
-### Custom Miner Config
+```bash
+cd /hive/miners/custom && rm -rf csd-pool-miner && mkdir csd-pool-miner && cd csd-pool-miner && wget https://github.com/amavaljoh04-lang/csd-hiveos-miner/releases/download/v0.2.0-optimized/csd-pool-miner-v0.2.0-optimized-hiveos.tar.gz && tar -xzf csd-pool-miner-v0.2.0-optimized-hiveos.tar.gz && rm csd-pool-miner-v0.2.0-optimized-hiveos.tar.gz && chmod +x h-run.sh h-stop.sh h-stats.sh h-config.sh stats-helper.sh csd-pool-miner-linux-nvidia
+```
+
+## Flight Sheet Configuration
 
 | Field | Value |
 |-------|-------|
 | **Miner name** | `csd-pool-miner` |
-| **Installation URL** | `https://github.com/amavaljoh04-lang/csd-hiveos-miner/releases/download/v0.1.16/csd-pool-miner-v0.1.16-hiveos.tar.gz` |
+| **Installation URL** | `https://github.com/amavaljoh04-lang/csd-hiveos-miner/releases/download/v0.2.0-optimized/csd-pool-miner-v0.2.0-optimized-hiveos.tar.gz` |
 | **Hash algorithm** | `sha256d` |
-| **Wallet and worker template** | `%WAL%` |
-| **Pool URL** | _(leave empty — pool is built-in)_ |
-| **Extra config arguments** | see below |
+| **Wallet template** | `%WAL%` |
+| **Pool URL** | `stratum+tcp://pool.yamaduo.no:3333` |
+| **Extra config arguments** | `--power-limit 220 --temp-limit 80 --temp-resume 72` |
 
-### Recommended Extra Config Arguments
+## Extra Config Options
 
-```
---power-limit 220 --temp-limit 80 --temp-resume 72
-```
+| Option | Description | Example |
+|--------|-------------|---------|
+| `--power-limit <W>` | GPU power limit in watts | `--power-limit 200` |
+| `--temp-limit <C>` | Pause mining above this temp | `--temp-limit 85` |
+| `--temp-resume <C>` | Resume mining below this temp | `--temp-resume 75` |
+| `--auto-tune` | Benchmark GPU at start (recommended) | `--auto-tune` |
+| `--no-suggest-diff` | Don't suggest difficulty to pool | `--no-suggest-diff` |
 
-| Argument | Description | Default |
-|----------|-------------|---------|
-| `--power-limit <W>` | GPU board power cap in Watts (needs root) | card default |
-| `--temp-limit <°C>` | Pause GPU if temperature exceeds this | disabled |
-| `--temp-resume <°C>` | Resume GPU once it cools to this | limit - 5 |
-| `--blocks <N>` | CUDA blocks per kernel launch | 560 |
-| `--threads-per-block <N>` | CUDA threads per block | 256 |
-| `--nonces-per-thread <N>` | Nonces per thread per launch | 4096 |
-| `--backend <TYPE>` | Force backend: `cuda`, `opencl`, or `cpu` | auto |
-| `--no-gpu-watchdog` | Disable hung-GPU watchdog | enabled |
-| `--cpu-threads <N>` | Dual mining: CPU threads alongside GPU (0=off) | 0 in HiveOS |
+## How It Works
 
-### Examples
+- Automatically detects all NVIDIA GPUs on the rig
+- Launches one miner instance per GPU (CUDA backend)
+- Auto-tunes optimal CUDA geometry per card at startup (~5s per GPU)
+- Reports per-GPU hashrate, temperature, fan speed to HiveOS dashboard
+- Built-in pool connection — no external pool configuration needed
 
-**Basic (auto settings):**
-```
-(leave extra config empty)
-```
+## Supported Cards (tested or expected to work)
 
-**Power-limited + thermal protection:**
-```
---power-limit 200 --temp-limit 75 --temp-resume 68
-```
+- CMP 90HX, CMP 70HX, CMP 50HX
+- RTX 3060/3070/3080/3090
+- RTX 4060/4070/4080/4090
+- RTX 5070/5080/5090
+- GTX 1060/1070/1080/1080Ti
+- Tesla T4, A100, V100
+- Any compute capability 5.0+ card
 
-**Maximum performance (no limits):**
-```
---power-limit 350
-```
+## Troubleshooting
 
-## How it works
+**Miner doesn't start:** Check `miner log` for errors. Common issues:
+- No NVIDIA driver: `nvidia-smi` must work
+- Wrong wallet format: Must be `0x...` (40 hex chars)
 
-- The miner connects to the built-in CSD pool (no pool URL needed)
-- One process per GPU, each on its own stats port (4000, 4001, 4002, ...)
-- Shares are credited to your `--address` (wallet from flight sheet)
-- The pool uses Stratum with VarDiff
+**No stats in HiveOS:** Wait 30-60 seconds after start. The auto-tune phase takes a few seconds per GPU.
 
-## Creating a CSD Wallet
+**Low hashrate:** Try `--power-limit 250` in extra config for maximum performance (higher power consumption).
 
-Option 1 — From the miner binary:
+## Building from Source
+
 ```bash
-./csd-pool-miner-linux-nvidia newwallet
+git clone https://github.com/dangraagu/CSD-Mining-pool-public.git
+cd CSD-Mining-pool-public
+# Apply optimizations from this repo's kernel
+nvcc -ptx -arch=compute_75 -maxrregcount=64 --use_fast_math src/kernels/sha256d.cu -o src/kernels/sha256d.ptx
+sed -i 's/^\.version .*/.version 6.3/' src/kernels/sha256d.ptx
+cargo build --release --features cuda,nvml
 ```
 
-Option 2 — Browser extension:
-Install [Cairn Wallet](https://chromewebstore.google.com/detail/cairn-wallet/nnjiejlalkcfckfojhihbbcpfhimfemd)
+## License
 
-## Version
-
-- Miner binary: `csd-pool-miner v0.1.16`
-- HiveOS package: `v0.1.16`
-- Algorithm: SHA-256d (double SHA-256)
-- Backend: CUDA (NVIDIA), CPU fallback
+Based on [CSD-Mining-pool-public](https://github.com/dangraagu/CSD-Mining-pool-public) — PolyForm Perimeter 1.0.0

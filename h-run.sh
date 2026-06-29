@@ -1,86 +1,46 @@
 #!/bin/bash
-# HiveOS run script for CSD Pool Miner
-# Launches one miner instance per GPU (auto-detects GPU count)
-# Compatible with any NVIDIA GPU (CUDA) or fallback to CPU
+# CSD Pool Miner — HiveOS Run Script
+# Detects all NVIDIA GPUs and launches one miner instance per device.
+# Compatible with any NVIDIA GPU (GTX 10xx through RTX 50xx, CMP, Tesla, etc.)
 
-MINER_DIR=/hive/miners/custom/csd-pool-miner-v0.1.16
-. $MINER_DIR/h-manifest.conf
-[[ -e /hive-config/wallet.conf ]] && . /hive-config/wallet.conf
+cd "$(dirname "$0")"
+source h-config.sh
 
-MINER_BIN="$MINER_DIR/csd-pool-miner-linux-nvidia"
+mkdir -p "$MINER_LOG_DIR"
 
-# Create log directory
-mkdir -p /var/log/miner/csd-pool-miner 2>/dev/null
-
-# Wallet address from flight sheet (CUSTOM_TEMPLATE = %WAL%)
-WALLET_ADDR="$CUSTOM_TEMPLATE"
-[[ -z "$WALLET_ADDR" ]] && echo "ERROR: No wallet address set in flight sheet" && exit 1
-
-# Parse extra config from flight sheet
-EXTRA_ARGS=""
-[[ ! -z "$CUSTOM_USER_CONFIG" ]] && EXTRA_ARGS="$CUSTOM_USER_CONFIG"
-
-# Detect backend: check for NVIDIA GPUs first
-GPU_COUNT=0
-BACKEND="cpu"
-
-if command -v nvidia-smi &>/dev/null; then
-    GPU_COUNT=$(nvidia-smi -L 2>/dev/null | wc -l)
-    if [[ $GPU_COUNT -gt 0 ]]; then
-        BACKEND="cuda"
-    fi
+# Detect GPU count via nvidia-smi
+GPU_COUNT=$(nvidia-smi -L 2>/dev/null | wc -l)
+if [[ "$GPU_COUNT" -lt 1 ]]; then
+    echo "ERROR: No NVIDIA GPUs detected" >&2
+    exit 1
 fi
 
-# If no NVIDIA GPU, try OpenCL
-if [[ "$BACKEND" == "cpu" ]] && [[ "$EXTRA_ARGS" == *"--backend opencl"* ]]; then
-    BACKEND="opencl"
-    # Attempt GPU count from OpenCL
-    GPU_COUNT=$($MINER_BIN devices 2>/dev/null | grep -c "Device" || echo 1)
-fi
-
-# Fallback to CPU if no GPUs
-if [[ $GPU_COUNT -eq 0 ]]; then
-    echo "No GPUs detected, running in CPU-only mode"
-    echo "Starting CSD Pool Miner v${MINER_VER} (CPU backend)"
-    echo "Wallet: ${WALLET_ADDR}"
-    $MINER_BIN \
-        --address "$WALLET_ADDR" \
-        --backend cpu \
-        $EXTRA_ARGS \
-        2>&1 | tee --append ${CUSTOM_LOG_BASENAME}.log
-    exit $?
-fi
-
-echo "========================================"
-echo " CSD Pool Miner v${MINER_VER} - HiveOS"
-echo " Backend: ${BACKEND}"
-echo " GPUs detected: ${GPU_COUNT}"
-echo " Wallet: ${WALLET_ADDR}"
-echo " Extra args: ${EXTRA_ARGS}"
-echo "========================================"
+echo "[CSD Miner v$MINER_VER] Detected $GPU_COUNT NVIDIA GPU(s)"
 
 # Kill any existing instances
-pkill -f "csd-pool-miner-linux-nvidia" 2>/dev/null
+pkill -f "$MINER_BIN" 2>/dev/null
 sleep 1
 
 # Launch one instance per GPU
-for ((i=0; i<GPU_COUNT; i++)); do
-    STATS_PORT=$((4000 + i))
-    echo "[GPU $i] Launching (stats: http://127.0.0.1:${STATS_PORT}/1/summary)"
+for ((GPU=0; GPU<GPU_COUNT; GPU++)); do
+    STATS_PORT=$((4000 + GPU))
+    LOG_FILE="$MINER_LOG_DIR/gpu${GPU}.log"
+    
     $MINER_BIN \
-        --address "$WALLET_ADDR" \
-        --backend $BACKEND \
-        --device $i \
+        --address "$CUSTOM_WALLET" \
+        --backend cuda \
+        --device $GPU \
         --cpu-threads 0 \
-        --stats-port $STATS_PORT \
         --auto-tune \
+        --stats-port $STATS_PORT \
         $EXTRA_ARGS \
-        >> ${CUSTOM_LOG_BASENAME}_gpu${i}.log 2>&1 &
+        >> "$LOG_FILE" 2>&1 &
+    
+    echo "[OK] GPU $GPU launched (PID=$!, stats port=$STATS_PORT)"
     sleep 2
 done
 
 echo "[OK] All $GPU_COUNT GPU miners launched"
-echo ""
 
-# Stay in foreground - HiveOS expects this process to stay alive
-exec tail -f ${CUSTOM_LOG_BASENAME}_gpu0.log
+# Stay in foreground so HiveOS sees us as running
+exec tail -f /dev/null --pid=$(pgrep -f "$MINER_BIN" | head -1)
