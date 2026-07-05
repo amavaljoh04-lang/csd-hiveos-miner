@@ -15,17 +15,13 @@ import (
 	stratum "github.com/0xFusionLayer/stratum-jsonrpc2-ws"
 )
 
-func setNvidiaMaxAlloc() {
-	// NVIDIA OpenCL driver artificially limits Max_mem_alloc_size to 25% of VRAM.
-	// Override this to allow full memory usage for scratchpad allocation.
+func setGpuAllocEnv() {
+	// Set GPU_MAX_ALLOC_PERCENT for AMD cards (NVIDIA ignores this)
 	if os.Getenv("GPU_MAX_ALLOC_PERCENT") == "" {
 		os.Setenv("GPU_MAX_ALLOC_PERCENT", "95")
 	}
 	if os.Getenv("GPU_SINGLE_ALLOC_PERCENT") == "" {
 		os.Setenv("GPU_SINGLE_ALLOC_PERCENT", "95")
-	}
-	if os.Getenv("CL_CONFIG_NVIDIA_MAX_ALLOC_PERCENT") == "" {
-		os.Setenv("CL_CONFIG_NVIDIA_MAX_ALLOC_PERCENT", "95")
 	}
 }
 
@@ -114,8 +110,8 @@ func parseDeviceIndices(indices string) map[int]bool {
 func main() {
 	log.Printf("%s %s (%s)", AppName, Version, "FusionHash")
 
-	// Remove NVIDIA OpenCL memory allocation limits before any OpenCL calls
-	setNvidiaMaxAlloc()
+	// Set GPU alloc env for AMD cards (NVIDIA ignores these)
+	setGpuAllocEnv()
 
 	flag.Parse()
 

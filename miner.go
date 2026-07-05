@@ -57,18 +57,14 @@ func (miner *Miner) init(intensity float64) error {
 	// Larger workgroups = better occupancy on CMP 90HX, RTX 3090, etc.
 	miner.workSize = min(int(device.Max_work_group_size)/16, 16)
 
-	// Memory budget: detect NVIDIA artificial 25% limit and use full VRAM
+	// Memory budget: use Max_mem_alloc_size (NVIDIA hardcodes this to 25% of VRAM,
+	// no env var override available unlike AMD). Single buffer cannot exceed this.
 	maxScratchpadAlloc := uint64(device.Max_mem_alloc_size) * 9 / 10
-	if uint64(device.Global_mem_size) > uint64(device.Max_mem_alloc_size)*3 {
-		// NVIDIA OpenCL: Max_mem_alloc_size is artificially limited to ~25% of VRAM
-		// With GPU_MAX_ALLOC_PERCENT=95 set, we can use much more
-		// Use 60% of total VRAM for scratchpads (leaving 40% for states, driver, context)
-		maxScratchpadAlloc = uint64(device.Global_mem_size) * 60 / 100
-		log.Printf("GPU=%s: NVIDIA detected, using %.2fGB of %.2fGB VRAM for scratchpads",
-			device.Name,
-			float64(maxScratchpadAlloc)/(1024*1024*1024),
-			float64(device.Global_mem_size)/(1024*1024*1024))
-	}
+	log.Printf("GPU=%s: VRAM=%.2fGB MaxAlloc=%.2fGB Budget=%.2fGB",
+		device.Name,
+		float64(device.Global_mem_size)/(1024*1024*1024),
+		float64(device.Max_mem_alloc_size)/(1024*1024*1024),
+		float64(maxScratchpadAlloc)/(1024*1024*1024))
 
 	// Compute threads: increased multiplier for high-CU GPUs (was 6*8=48, now 16*8=128)
 	maxThreadsByCompute := uint64(float64(device.Max_compute_units*16*8) * intensity)
@@ -114,24 +110,9 @@ func (miner *Miner) init(intensity float64) error {
 		return fmt.Errorf("CreateBuffer input_buf err: %s, %v", device.Name, err)
 	}
 
-	// Try to allocate scratchpad; if it fails (env var not effective), reduce threads
 	miner.scratchpads_buf, err = runner.CreateEmptyBuffer(cl.READ_WRITE, int(scratchPadSize*g_thd))
 	if err != nil {
-		// Fallback: use Max_mem_alloc_size * 9/10 as conservative limit
-		fallbackAlloc := uint64(device.Max_mem_alloc_size) * 9 / 10
-		fallbackThreads := fallbackAlloc / MEMORY
-		fallbackThreads = (fallbackThreads / uint64(miner.workSize)) * uint64(miner.workSize)
-		if fallbackThreads == 0 {
-			return fmt.Errorf("CreateBuffer scratchpads_buf err (no fallback): %s, %v", device.Name, err)
-		}
-		log.Printf("GPU=%s: Large alloc failed, falling back to %d threads (%.2fGB)",
-			device.Name, fallbackThreads, float64(MEMORY*fallbackThreads)/(1024*1024*1024))
-		miner.maxThreads = fallbackThreads
-		g_thd = fallbackThreads
-		miner.scratchpads_buf, err = runner.CreateEmptyBuffer(cl.READ_WRITE, int(scratchPadSize*g_thd))
-		if err != nil {
-			return fmt.Errorf("CreateBuffer scratchpads_buf err: %s, %v", device.Name, err)
-		}
+		return fmt.Errorf("CreateBuffer scratchpads_buf err: %s, %v", device.Name, err)
 	}
 	miner.states_buf, err = runner.CreateEmptyBuffer(cl.READ_WRITE, int(200*g_thd))
 	if err != nil {
