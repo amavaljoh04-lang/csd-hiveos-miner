@@ -1,92 +1,53 @@
-# CSD Pool Miner — HiveOS Custom Miner Package (Optimized)
+# WarpMiner v2.1.0-unthrottled (FusionLayer / FXL)
 
-**Version:** v0.2.0-optimized  
-**Algorithm:** SHA-256d (Compute Substrate / CSD)  
-**Pool:** pool.yamaduo.no:3333 (built-in)  
-**Compatible:** Any NVIDIA GPU (GTX 1060+, RTX 20xx/30xx/40xx/50xx, CMP, Tesla, A-series)
+**Fork de** [0xFusionLayer/warpminer](https://github.com/0xFusionLayer/warpminer) **avec les limitations retirées pour CMP 90HX et autres grosses cartes.**
 
-## Optimizations (vs v0.1.19 official)
+## Modifications vs v2.0.0 officiel
 
-1. **CUDA Kernel Early-Exit** — Checks outer hash first word immediately after SHA-256 compression. Rejects 99.99%+ of nonces before computing the full target comparison. Saves ~7 state-word computations per miss.
+### 1. WorkSize cap retiré (miner.go)
+- **Avant :** `workSize = min(Max_work_group_size/16, 8)` → plafonné à 8
+- **Après :** `workSize = min(Max_work_group_size/16, 16)` → permet 16 pour les CMP 90HX (meilleure occupancy)
 
-2. **Optimized maj() computation** — Uses `(a & b) | (c & (a | b))` instead of textbook `(a & b) ^ (a & c) ^ (b & c)`. One fewer XOR per round = 64 fewer ops per hash.
+### 2. Budget mémoire VRAM débloqué (miner.go)
+- **Avant :** Utilise `Max_mem_alloc_size * 90%` → seulement ~2.5 GB sur NVIDIA (25% de la VRAM)
+- **Après :** Détecte les cartes NVIDIA et utilise `Global_mem_size * 80%` → ~8 GB sur CMP 90HX (10 GB VRAM)
+- **Résultat :** ~4x plus de threads mining (de ~1150 à ~4000+)
 
-3. **Expanded Auto-Tune Geometries** — 12 candidate geometries (vs 6 in official) covering:
-   - Small GPUs (10-20 SMs): 256-512 blocks
-   - Mid-range GPUs (28-46 SMs): 560-1024 blocks  
-   - Large GPUs (82+ SMs like CMP 90HX, RTX 4090): 2048-4096 blocks
-   - High-occupancy variants: 512 TPB, 128 TPB options
+### 3. Multiplicateur compute augmenté (miner.go)
+- **Avant :** `Max_compute_units * 6 * 8 = 3936` threads max (CMP 90HX = 82 CUs)
+- **Après :** `Max_compute_units * 16 * 8 = 10496` threads max → la mémoire devient le seul bottleneck
 
-4. **Reduced Global Memory Traffic** — Found-flag polling interval doubled from 256 to 512 nonces, cutting uncoalesced global reads by 50% in the inner mining loop.
+### 4. NVIDIA OpenCL allocation override (main.go)
+- Définit automatiquement `GPU_MAX_ALLOC_PERCENT=95` au démarrage
+- Plus besoin de le mettre manuellement dans les variables d'environnement
 
-5. **NVML Telemetry Enabled** — Real-time temperature, fan speed, power draw monitoring via NVIDIA Management Library.
+### 5. Fallback automatique
+- Si l'allocation large échoue (driver trop ancien), retombe automatiquement sur le mode conservateur
 
-## Installation (SSH — one command)
+## Installation HiveOS (Flight Sheet)
 
-```bash
-cd /hive/miners/custom && rm -rf csd-pool-miner && mkdir csd-pool-miner && cd csd-pool-miner && wget https://github.com/amavaljoh04-lang/csd-hiveos-miner/releases/download/v0.2.0-optimized/csd-pool-miner-v0.2.0-optimized-hiveos.tar.gz && tar -xzf csd-pool-miner-v0.2.0-optimized-hiveos.tar.gz && rm csd-pool-miner-v0.2.0-optimized-hiveos.tar.gz && chmod +x h-run.sh h-stop.sh h-stats.sh h-config.sh stats-helper.sh csd-pool-miner-linux-nvidia
-```
-
-## Flight Sheet Configuration
-
-| Field | Value |
-|-------|-------|
-| **Miner name** | `csd-pool-miner` |
-| **Installation URL** | `https://github.com/amavaljoh04-lang/csd-hiveos-miner/releases/download/v0.2.0-optimized/csd-pool-miner-v0.2.0-optimized-hiveos.tar.gz` |
-| **Hash algorithm** | `sha256d` |
+| Champ | Valeur |
+|-------|--------|
+| **Miner name** | `warpminer` |
+| **Installation URL** | *(voir Releases)* |
+| **Hash algorithm** | `fusionhash` |
 | **Wallet template** | `%WAL%` |
-| **Pool URL** | `stratum+tcp://pool.yamaduo.no:3333` |
-| **Extra config arguments** | `--power-limit 220 --temp-limit 80 --temp-resume 72` |
+| **Pool URL** | `wss://eu.coin-miners.info:8443` |
+| **Extra config** | *(vide ou `-intensity 0.8` si surchauffe)* |
 
-## Extra Config Options
-
-| Option | Description | Example |
-|--------|-------------|---------|
-| `--power-limit <W>` | GPU power limit in watts | `--power-limit 200` |
-| `--temp-limit <C>` | Pause mining above this temp | `--temp-limit 85` |
-| `--temp-resume <C>` | Resume mining below this temp | `--temp-resume 75` |
-| `--auto-tune` | Benchmark GPU at start (recommended) | `--auto-tune` |
-| `--no-suggest-diff` | Don't suggest difficulty to pool | `--no-suggest-diff` |
-
-## How It Works
-
-- Automatically detects all NVIDIA GPUs on the rig
-- Launches one miner instance per GPU (CUDA backend)
-- Auto-tunes optimal CUDA geometry per card at startup (~5s per GPU)
-- Reports per-GPU hashrate, temperature, fan speed to HiveOS dashboard
-- Built-in pool connection — no external pool configuration needed
-
-## Supported Cards (tested or expected to work)
-
-- CMP 90HX, CMP 70HX, CMP 50HX
-- RTX 3060/3070/3080/3090
-- RTX 4060/4070/4080/4090
-- RTX 5070/5080/5090
-- GTX 1060/1070/1080/1080Ti
-- Tesla T4, A100, V100
-- Any compute capability 5.0+ card
-
-## Troubleshooting
-
-**Miner doesn't start:** Check `miner log` for errors. Common issues:
-- No NVIDIA driver: `nvidia-smi` must work
-- Wrong wallet format: Must be `0x...` (40 hex chars)
-
-**No stats in HiveOS:** Wait 30-60 seconds after start. The auto-tune phase takes a few seconds per GPU.
-
-**Low hashrate:** Try `--power-limit 250` in extra config for maximum performance (higher power consumption).
-
-## Building from Source
+## Compilation depuis les sources
 
 ```bash
-git clone https://github.com/dangraagu/CSD-Mining-pool-public.git
-cd CSD-Mining-pool-public
-# Apply optimizations from this repo's kernel
-nvcc -ptx -arch=compute_75 -maxrregcount=64 --use_fast_math src/kernels/sha256d.cu -o src/kernels/sha256d.ptx
-sed -i 's/^\.version .*/.version 6.3/' src/kernels/sha256d.ptx
-cargo build --release --features cuda,nvml
+sudo apt install -y gcc g++ make build-essential ocl-icd-opencl-dev opencl-headers
+go build -ldflags="-s -w" -o warpminer .
 ```
 
-## License
+## Gain attendu
 
-Based on [CSD-Mining-pool-public](https://github.com/dangraagu/CSD-Mining-pool-public) — PolyForm Perimeter 1.0.0
+| Carte | Avant (v2.0.0) | Après (v2.1.0) | Gain |
+|-------|--------|--------|------|
+| CMP 90HX (10 GB) | ~0.25 kH/s | ~0.8-1.0 kH/s | **~3-4x** |
+| RTX 3090 (24 GB) | ~0.25 kH/s | ~1.5-2.0 kH/s | **~6-8x** |
+| RTX 4090 (24 GB) | ~0.30 kH/s | ~2.0-2.5 kH/s | **~7-8x** |
+
+*Gains estimés basés sur le nombre de threads supplémentaires. Résultats réels peuvent varier.*

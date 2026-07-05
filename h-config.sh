@@ -1,21 +1,22 @@
-#!/bin/bash
-# CSD Pool Miner — HiveOS Configuration
-# This file is sourced by h-run.sh and h-stats.sh
+#!/usr/bin/env bash
 
-MINER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MINER_BIN="$MINER_DIR/csd-pool-miner-linux-nvidia"
-MINER_LOG_DIR="/var/log/miner/csd-pool-miner"
-MINER_VER="0.2.0-optimized"
+# HiveOS config script for WarpMiner (FusionLayer / FXL)
+# Reads wallet.conf and generates pool.cfg
 
-# Read wallet from HiveOS config
-[[ -f /hive/miners/custom/csd-pool-miner/wallet.conf ]] && source /hive/miners/custom/csd-pool-miner/wallet.conf
+[[ -z $CUSTOM_TEMPLATE ]] && CUSTOM_TEMPLATE="%WAL%"
+[[ -z $CUSTOM_URL ]] && CUSTOM_URL="wss://eu.coin-miners.info:8443"
 
-# Fallback: try CUSTOM_TEMPLATE from flight sheet
-if [[ -z "$CUSTOM_WALLET" ]]; then
-    [[ -e /hive-config/rig.conf ]] && source /hive-config/rig.conf
-    CUSTOM_WALLET="$CUSTOM_TEMPLATE"
-fi
+POOL_URL="$CUSTOM_URL"
+POOL_USER="$CUSTOM_TEMPLATE"
+POOL_PASS="${CUSTOM_PASS:-x}"
 
-# Extra args from flight sheet (e.g. --power-limit 220 --temp-limit 80)
-EXTRA_ARGS=""
-[[ -n "$CUSTOM_USER_CONFIG" ]] && EXTRA_ARGS="$CUSTOM_USER_CONFIG"
+# Convert stratum+tcp:// to wss:// if needed (FXL uses WebSocket)
+POOL_URL="${POOL_URL/stratum+tcp:\/\//wss://}"
+POOL_URL="${POOL_URL/stratum+ssl:\/\//wss://}"
+
+# Write config file
+cat > /hive/miners/custom/warpminer/pool.cfg <<EOF
+POOL_URL=$POOL_URL
+POOL_USER=$POOL_USER
+POOL_PASS=$POOL_PASS
+EOF

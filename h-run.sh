@@ -1,46 +1,31 @@
-#!/bin/bash
-# CSD Pool Miner — HiveOS Run Script
-# Detects all NVIDIA GPUs and launches one miner instance per device.
-# Compatible with any NVIDIA GPU (GTX 10xx through RTX 50xx, CMP, Tesla, etc.)
+#!/usr/bin/env bash
 
-cd "$(dirname "$0")"
-source h-config.sh
+# HiveOS run script for WarpMiner (FusionLayer / FXL)
 
-mkdir -p "$MINER_LOG_DIR"
+cd /hive/miners/custom/warpminer
 
-# Detect GPU count via nvidia-smi
-GPU_COUNT=$(nvidia-smi -L 2>/dev/null | wc -l)
-if [[ "$GPU_COUNT" -lt 1 ]]; then
-    echo "ERROR: No NVIDIA GPUs detected" >&2
-    exit 1
+# Source config
+[[ -f pool.cfg ]] && source pool.cfg
+
+# Set NVIDIA OpenCL max alloc (critical for CMP 90HX and other large VRAM cards)
+export GPU_MAX_ALLOC_PERCENT=95
+export GPU_SINGLE_ALLOC_PERCENT=95
+export CL_CONFIG_NVIDIA_MAX_ALLOC_PERCENT=95
+
+# Remove AMD ICD files that cause SIGSEGV on NVIDIA-only rigs
+if [[ ! -f /proc/driver/nvidia/version ]] || true; then
+    for f in /etc/OpenCL/vendors/amdocl*.icd; do
+        [[ -f "$f" ]] && mv "$f" "$f.disabled" 2>/dev/null
+    done
 fi
 
-echo "[CSD Miner v$MINER_VER] Detected $GPU_COUNT NVIDIA GPU(s)"
+# Build command line
+MINER_ARGS="-pool ${POOL_URL:-wss://eu.coin-miners.info:8443}"
+MINER_ARGS="$MINER_ARGS -user ${POOL_USER:-default}"
+MINER_ARGS="$MINER_ARGS -pass ${POOL_PASS:-x}"
 
-# Kill any existing instances
-pkill -f "$MINER_BIN" 2>/dev/null
-sleep 1
+# Parse extra config args (intensity, devices, etc.)
+[[ -n "$CUSTOM_USER_CONFIG" ]] && MINER_ARGS="$MINER_ARGS $CUSTOM_USER_CONFIG"
 
-# Launch one instance per GPU
-for ((GPU=0; GPU<GPU_COUNT; GPU++)); do
-    STATS_PORT=$((4000 + GPU))
-    LOG_FILE="$MINER_LOG_DIR/gpu${GPU}.log"
-    
-    $MINER_BIN \
-        --address "$CUSTOM_WALLET" \
-        --backend cuda \
-        --device $GPU \
-        --cpu-threads 0 \
-        --auto-tune \
-        --stats-port $STATS_PORT \
-        $EXTRA_ARGS \
-        >> "$LOG_FILE" 2>&1 &
-    
-    echo "[OK] GPU $GPU launched (PID=$!, stats port=$STATS_PORT)"
-    sleep 2
-done
-
-echo "[OK] All $GPU_COUNT GPU miners launched"
-
-# Stay in foreground so HiveOS sees us as running
-exec tail -f /dev/null --pid=$(pgrep -f "$MINER_BIN" | head -1)
+# Launch miner
+./warpminer $MINER_ARGS 2>&1 | tee /var/log/miner/warpminer/warpminer.log
