@@ -62,8 +62,8 @@ func (miner *Miner) init(intensity float64) error {
 	if uint64(device.Global_mem_size) > uint64(device.Max_mem_alloc_size)*3 {
 		// NVIDIA OpenCL: Max_mem_alloc_size is artificially limited to ~25% of VRAM
 		// With GPU_MAX_ALLOC_PERCENT=95 set, we can use much more
-		// Use 80% of total VRAM for scratchpads (leaving room for states, buffers, driver)
-		maxScratchpadAlloc = uint64(device.Global_mem_size) * 80 / 100
+		// Use 60% of total VRAM for scratchpads (leaving 40% for states, driver, context)
+		maxScratchpadAlloc = uint64(device.Global_mem_size) * 60 / 100
 		log.Printf("GPU=%s: NVIDIA detected, using %.2fGB of %.2fGB VRAM for scratchpads",
 			device.Name,
 			float64(maxScratchpadAlloc)/(1024*1024*1024),

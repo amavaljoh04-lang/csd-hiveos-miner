@@ -27,5 +27,8 @@ MINER_ARGS="$MINER_ARGS -pass ${POOL_PASS:-x}"
 # Parse extra config args (intensity, devices, etc.)
 [[ -n "$CUSTOM_USER_CONFIG" ]] && MINER_ARGS="$MINER_ARGS $CUSTOM_USER_CONFIG"
 
+# Create log directory if missing
+mkdir -p /var/log/miner/warpminer
+
 # Launch miner
 ./warpminer $MINER_ARGS 2>&1 | tee /var/log/miner/warpminer/warpminer.log
