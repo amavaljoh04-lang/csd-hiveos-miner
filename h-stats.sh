@@ -3,7 +3,7 @@
 # NOTE: This script is SOURCED by HiveOS agent, not executed directly
 # Do NOT use 'exit' - it will kill the parent process
 
-MINER_DIR=/hive/miners/custom/csd-pool-miner-v0.2.0-optimized
+MINER_DIR=/hive/miners/custom/csd-pool-miner
 
 [[ -f $MINER_DIR/h-manifest.conf ]] && source $MINER_DIR/h-manifest.conf
 
